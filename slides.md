@@ -1,25 +1,28 @@
-theme: Inter, 1
-footer: @shelbyspees at #SLOconf2022
-slide-dividers: #, ##
+theme: Work, 7
+footer: *@shelbyspees* at *#SLOconf*
+footer-style: text-scale(1.5)
+slide-dividers: #
+header: text-scale(1.5)
 
-# [fit] Intro to Tracing-Based SLOs
+# [fit] Intro to <br>Tracing-Based SLOs
 
-Shelby Spees
+**Shelby Spees**
 Site Reliability Engineer
 Equinix
 
-[.hide-footer]
 ^ hi I’m Shelby
 I’m an SRE at Equinix
 and this is an introduction to tracing-based SLOs
 
 # why tracing?
 
+TODO screenshot of trace
+
 ^ (2min this section)
 
 ^ tracing is great because it can capture so much data about the state of your service within the scope of each request.
 
-## use OpenTelemetry
+# use OpenTelemetry
 
 auto-instrumentation for HTTP and gRPC
 
@@ -32,14 +35,14 @@ so out of the box we can already measure latency and error rate.
 
 ^ opentelemetry also automatically differentiates between client calls and server-side responses, which helps a lot when we want to look at different kinds of workloads
 
-## traces are fancy structured logs
+# traces are fancy structured logs
 
 TODO example data
 
 ^ while tracing libraries do a lot of work to keep track of trace state, the actual data they generate is basically just structured logs that have a couple special fields to connect them.
 BUT what those connections give us is the ability to see the **relationship** between events. that makes a huge difference when we're debugging.
 
-## observability == exploration
+# observability == exploration
 
 -> broad view: what's slow?
 -> zoom in: what's different about this slow traffic?
@@ -52,6 +55,8 @@ that ability to query on raw trace data means we don’t have to decide up front
 
 # tracing-based SLOs
 
+TODO screenshot of SLO compliance graph
+
 ^ 2 min this section
 
 ^ of course we’re not redefining our SLOs on the fly, but if your tools support querying across lots of arbitrary dimensions then they can also support defining an SLI based on equally arbitrary dimensions.
@@ -59,7 +64,9 @@ that ability to query on raw trace data means we don’t have to decide up front
 ^ this is a big deal. while latency and error rate are important for pretty much every service, the most important thing for your service, your key differentiator? it’s going to be unique to that service.
 that means you might not be able to measure it with auto-instrumented trace data.
 
-## instrument your code
+# instrument your code
+
+TODO add code block
 
 ^ so, it’s important to instrument your code.
 what’s nice about tracing is that the data from custom instrumentation gets interwoven with existing auto-instrumented traces, which means it helps with debugging too!
@@ -74,7 +81,9 @@ data that can serve multiple purposes is just efficient, you know?
 ^ to define our SLI we need to do two things
 different tools have different ways of defining SLIs for trace data, so for this talk I’m just using pseudocode for my SLI definitions
 
-# overall traffic SLI: filter to what’s relevant
+# SLI: overall traffic
+
+# filter to what’s relevant
 
 ```javascript
 // filter to what's relevant
@@ -92,71 +101,107 @@ IF(
 
 ^ for overall traffic to our Rails monolith we can look at server spans at the root of traces in our rails monolith
 
-## example trace
+# root span of the trace
 
 TODO add screenshot
 
 ^ here’s an example of the kind of span we’re looking at. the root span of a trace tells us the duration for synchronous requests
 those are the ones where there's a human at the other end waiting for a page to load, or an API call waiting for a response
 
-## overall traffic SLI: filter to what’s relevant
+# filter to what’s relevant
 
-```diff
-    IF(
-        trace.parent_id == undefined
-              AND
-        span.kind == "server"
-              AND
-+       user.staff != true
-+             AND
-+       user.bot != true
-      )
+```javascript
+IF(
+      trace.parent_id == undefined
+            AND
+      span.kind == "server"
+            AND
+      // filter out employee traffic
+      user.staff != true
+            AND
+      // filter out internal bot traffic
+      user.bot != true
+)
 ```
 
 ^ we also want to make sure we’re getting an accurate representation of the customer experience, so let’s filter out requests from staff users and internal bot users.
 these user fields come from custom instrumentation and they only apply where we have data about the user.
-we want to be careful not to filter out spans where these user fields are undefined, so I'm specifically filtering out "true" for each one
 
-## overall traffic SLI: define a condition for “good”
-
-```javascript
-// define a condition for good
-// not 500 error and faster than 2s
-// TODO
-```
-
-^ OpenTelemetry’s HTTP auto-instrumentation automatically captures the request duration and whether it was successful.
-
-## provisioning SLI: filter to what’s relevant
+# define a condition for “good”
 
 ```javascript
-// TODO
+IF(
+      // should not return a server error
+      http.status_code < 500
+            AND
+      // should return in less than 1s
+      duration_ms < 1000
+)
 ```
 
-^ provisioning is our bread and butter at equinix metal, so this
+^ remember that OpenTelemetry’s HTTP auto-instrumentation automatically captures the request duration and whether it was successful.
+you can add OpenTelemetry today and define an SLI just like this one
 
-# provisioning SLI: filter to what’s relevant
+# SLI: provisioning
+^ provisioning is our bread and butter at equinix metal
+so we've been doing a lot of work to instrument and measure the bare metal provisioning process
+
+# filter to what’s relevant
+
+```javascript
+IF(
+      // just the provision job
+      name == "ProvisionDeviceJob process"
+)
+```
+
+^ our provisions are orchestrated by a background job
+
+# ProvisionDeviceJob process
+
+TODO screenshot showing a failed provision
+
+^ for now, this ProvisionDeviceJob is our best proxy for the end-to-end provisioning process
+there are some steps that happen on boot that are harder to set up traceparent propagation for, so they don't get included as child spans right now
+so that's a work in progress
+
+# filter to what’s relevant
+
+```javascript
+IF(
+      // just the provision job
+      name == "ProvisionDeviceJob process"
+            AND
+      // filter out internal test projects
+      project.test != true
+)
+```
 
 ^ we also have the ability to filter out test projects, so let’s do that.
-I don’t want our on-call devs to get woken up by a QA team reproducing a bunch of errors on the other side of the world.
+I don’t want someone on-call to get woken up by dev enthusiastically reproducing a provisioning error
+the test provisions are still generating traces. the data is there for our dev to use when debugging. we're not changing anything at write-time
+we're just filtering those provisions out for the SLO query
+
+# define a condition for “good”
 
 ```javascript
-// TODO
-      AND
-project.test != true
+IF(
+      // should not fail
+      error == undefined
+)
 ```
 
-# provisioning SLI: define a condition for “good”
-
-```javascript
-// TODO
-```
+^ since there are provision steps outside of ProvisionDeviceJob, we're not currently tracking how long provisions take
+there's work in progress to capture that separately
 
 # you can do this!
 
 - add OpenTelemetry auto-instrumentation
 - observe and learn
-- add custom instrumentation
--
+- define basic SLIs
+- add *custom* instrumentation
+- observe and learn
+- define fancy SLIs
 
-^
+^ you're not going to do all this in one day
+what you learn from your trace data will be super valueable, and you might
