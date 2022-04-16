@@ -18,8 +18,6 @@ and this is an introduction to tracing-based SLOs
 
 ![fill](images/spans.png)
 
-^ (2min this section)
-
 ^ tracing is great because it can capture so much data about the state of your service within the scope of each request.
 
 # use OpenTelemetry
@@ -56,8 +54,6 @@ that ability to query on raw trace data means we don’t have to decide up front
 
 ![fit](images/heatmap.png)
 
-^ 2 min this section
-
 ^ of course we’re not redefining our SLOs on the fly, but if your tools support querying across lots of arbitrary dimensions then they can also support defining an SLI based on equally arbitrary dimensions.
 
 ^ this is a big deal. while latency and error rate are important for pretty much every service, the most important thing for your service, your key differentiator? it’s going to be unique to that service.
@@ -81,17 +77,21 @@ func (m Action) BootDeviceSet(ctx context.Context, ...) (result string, err erro
 ```
 
 ^ so, it’s important to instrument your code.
-what’s nice about tracing is that the data from custom instrumentation gets interwoven with existing auto-instrumented traces, which means it helps with debugging too!
+what’s nice about tracing is that the data from custom instrumentation gets interwoven with existing auto-instrumented traces.
 rather than sending a bunch of disparate data points, we’re enriching our existing traces with more context.
-data that can serve multiple purposes is just efficient, you know?
+defining SLOs from trace data means that when we add custom instrumentation for measuring the most important parts of our service, it's also there the rest of the time to help us with debugging
+dual-purpose data!
 
 # defining a tracing-based SLI
 
 - filter to what’s relevant
-- define a condition for “good”
+- define a condition for "good"
 
 ^ to define our SLI we need to do two things
-different tools have different ways of defining SLIs for trace data, so for this talk I’m just using pseudocode for my SLI definitions
+filter to what's relevant and define a condition for "good"
+the same as any other kind of SLI
+when we're talking about tracing-based SLIs, different tools have different ways of defining your filters and conditions
+so in my slides I'm just using pseudocode
 
 # SLI: overall traffic
 
@@ -102,7 +102,6 @@ different tools have different ways of defining SLIs for trace data, so for this
 # filter to what’s relevant
 
 ```javascript
-// filter to what's relevant
 IF(
     // root spans
     trace.parent_id == undefined
@@ -112,17 +111,16 @@ IF(
 )
 ```
 
-^ (overall traffic SLI section: 2min)
-^ querying across multiple spans in each trace is expensive, so for our SLI we’re generally going to look at individual spans that best represent the end-user experience.
-
-^ for overall traffic to our Rails monolith we can look at server spans at the root of traces
+^ we want to filter to spans that best represent the end-user experience.
+for overall traffic to our API service we can look at server spans at the root of traces
 
 # root span of the trace
 
 ![inline, left, 105%](images/user-trace.png)
 
-^ here’s an example of the kind of span we’re looking at. the root span of a trace tells us the duration for synchronous requests
-those are the ones where there's a human at the other end waiting for a page to load, or an API call waiting for a response
+^ here’s an example of the kind of span we’re looking at
+the root span of a trace tells us the duration for synchronous requests
+those are the ones where there's a human at the other end waiting for a page to load, or a software service waiting for an API response
 
 # filter to what’s relevant
 
@@ -141,7 +139,7 @@ IF(
 ```
 
 ^ we also want to make sure we’re getting an accurate representation of the customer experience, so let’s filter out requests from staff users and internal bot users.
-these user fields come from custom instrumentation and they only apply where we have data about the user.
+these user fields come from custom instrumentation.
 
 # define a condition for “good”
 
@@ -155,8 +153,9 @@ IF(
 )
 ```
 
-^ remember that OpenTelemetry’s HTTP auto-instrumentation automatically captures the request duration and whether it was successful.
-you can add OpenTelemetry today and define an SLI just like this one
+^ now we define our condition for good
+remember that OpenTelemetry’s auto-instrumentation automatically captures the request duration and whether it was successful.
+so you can add OpenTelemetry today and define an SLI just like this one
 
 # SLI: provisioning
 
@@ -176,20 +175,20 @@ IF(
 )
 ```
 
-^ our provisions are orchestrated by a background job
+^ our provisions are orchestrated by a background job called ProvisionDeviceJob
 
 # ProvisionDeviceJob
 ![inline, left](images/provisiondevicejob.png)
 
-^ for now, this ProvisionDeviceJob is our best proxy for the end-to-end provisioning process
-there are some steps that happen on boot that are harder to set up traceparent propagation for, so they don't get included as child spans right now
-so that's a work in progress
+^ here's what that looks like in a trace.
+this ProvisionDeviceJob is our best proxy for the end-to-end provisioning process
 
 ----
 
 ![inline, left](images/failed-provision.png)
 
-^ if a provision fails, we can go look at the trace to see what step had an error
+^ tracing our provisioning process is a huge help for debugging
+if ProvisionDeviceJob fails, we can go look at the trace to see what step had the error
 
 # filter to what’s relevant
 
@@ -203,10 +202,10 @@ IF(
 )
 ```
 
-^ we also have the ability to filter out test projects, so let’s do that.
-I don’t want someone on-call to get woken up by dev enthusiastically reproducing a provisioning error
+^ for our SLI, we also have the ability to filter out test projects, so let’s do that.
+if one of our devs is enthusiastically reproducing a provisioning error, I don't want that to wake up whoever's on-call.
 the test provisions are still generating traces. the data is there for our dev to use when debugging. we're not changing anything at write-time
-we're just filtering those provisions out for the SLO query
+we're just filtering out those test provisions for the SLO query
 
 # define a condition for “good”
 
@@ -218,8 +217,9 @@ IF(
 ```
 
 ^ and then our condition for "good" says it shouldn't error.
-we're not currently tracking how long provisions take since there are machine-side provision steps that aren't directly orchestrated by ProvisionDeviceJob.
-we have work in progress to capture that data separately
+we're not currently tracking how long provisions take because there are a few machine-side provision steps that aren't directly orchestrated by ProvisionDeviceJob.
+we have work in progress to improve our instrumentation and capture that in our trace data separately, so we're planning to update our SLI when that lands
+nobody ever said bare-metal observability would be easy.
 
 # you can do this!
 
@@ -230,8 +230,11 @@ we have work in progress to capture that data separately
 - observe and learn
 - define :sparkles: fancy :sparkles: SLIs
 
-^ you can start tracking latency and errors with OpenTelemetry right now
-and then over time you can instrument the most critical parts of your service
-and decide whether you need to further refine your SLIs to get the best
+^ but don't be intimidated. you can do this.
+you can start observing latency and errors with OpenTelemetry now.
+and then over time you can go in and instrument the most critical parts of your service
+and decide whether you need to further refine your SLI to make it the best representation of your customer's experience.
 
 # [fit] thanks for watching!
+
+^ thanks for watching! hit me up in the conference slack or on twitter if you have questions or any cool observability stories.
