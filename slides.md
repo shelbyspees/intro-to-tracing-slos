@@ -3,6 +3,7 @@ footer: *@shelbyspees* at *#SLOconf*
 footer-style: text-scale(1.5)
 slide-dividers: #
 header: text-scale(1.5)
+presenter-notes: text-scale(0.5)
 
 # [fit] intro to <br>tracing-based SLOs
 
