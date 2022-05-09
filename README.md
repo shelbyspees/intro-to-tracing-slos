@@ -12,6 +12,7 @@
 
 - [markdown slides](slides.md)
 - [pdf slides](slides.pdf)
+- [pdf slides with speaker notes](slides-notes.pdf)
 - [SLOconf 2022 recording](https://youtu.be/M1PIwh0-wNk)
 
 Slides rendered using [DeckSet](https://www.deckset.com/).
